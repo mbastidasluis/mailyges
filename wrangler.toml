@@ -1,0 +1,6 @@
+name = "mailyges"
+main = "src/index.js"
+compatibility_date = "2023-04-30"
+
+[triggers]
+crons = [ "1 * * * *" ]
