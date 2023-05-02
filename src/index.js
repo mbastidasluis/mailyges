@@ -1,17 +1,71 @@
-/**
- * Welcome to Cloudflare Workers! This is your first scheduled worker.
- *
- * - Run `wrangler dev --local` in your terminal to start a development server
- * - Run `curl "http://localhost:8787/cdn-cgi/mf/scheduled"` to trigger the scheduled event
- * - Go back to the console to see what your worker has logged
- * - Update the Cron trigger in wrangler.toml (see https://developers.cloudflare.com/workers/wrangler/configuration/#triggers)
- * - Run `wrangler publish --name my-worker` to publish your worker
- *
- * Learn more at https://developers.cloudflare.com/workers/runtime-apis/scheduled-event/
- */
+import { load } from 'cheerio'
+
+const TEMPLATE_NAME = 'frase_del_dia';
+const TEMPLATE_LANGUAGE_CODE = 'es';
+const API_VERSION_NUMBER = 'v16.0';
+
 
 export default {
-	async scheduled(controller, env, ctx) {
-		console.log(`Hello World!`);
+	async scheduled(event, env, ctx) {
+		ctx.waitUntil(sendDailyMessage());
 	},
 };
+
+async function sendDailyMessage() {
+	try {
+		const { quoteOfTheDay, authorOfTheDay } = await getQuoteOfTheDay()
+
+		console.log({ quoteOfTheDay, authorOfTheDay });
+
+		const resutl = await Promise.allSettled([
+			RECIPIENT_PHONE_NUMBERS.map(RECIPIENT_PHONE_NUMBER =>
+				fetch(`https://graph.facebook.com/${API_VERSION_NUMBER}/${PHONE_NUMBER_ID}/messages`, {
+					headers: {
+						Authorization: `Bearer ${ACCESS_TOKEN}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						"messaging_product": "whatsapp",
+						"to": RECIPIENT_PHONE_NUMBER,
+						"type": "template",
+						"template": {
+							"name": TEMPLATE_NAME,
+							"language": {
+								"code": TEMPLATE_LANGUAGE_CODE
+							},
+							components: [
+								{
+									"type": "body",
+									"parameters": [
+										{
+											"type": "text",
+											"text": quoteOfTheDay
+										},
+										{
+											"type": "text",
+											"text": authorOfTheDay
+										}
+									]
+								}
+							]
+						}
+					}),
+					method: "POST",
+				})
+			)])
+		console.log('resutl', resutl)
+		return
+	} catch (e) {
+		console.error('Error:', e)
+		return
+	}
+}
+
+async function getQuoteOfTheDay() {
+	const quotesPage = await fetch('https://proverbia.net/frase-del-dia')
+		.then(res => res.text())
+	const quotesPageDOM = load(quotesPage)
+	const quoteOfTheDay = quotesPageDOM('blockquote p').first().text().trim()
+	const authorOfTheDay = quotesPageDOM('footer a').first().text().trim()
+	return { quoteOfTheDay, authorOfTheDay }
+}
